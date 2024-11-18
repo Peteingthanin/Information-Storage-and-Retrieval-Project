@@ -24,45 +24,70 @@ def search():
     else:
         page_no = 1
     
-    #keywords = keyword.split(" ")
-    
     try:
         keyword = float(keyword)
         isnum = True
     except:
         isnum = False
 
-    # body = get query
-    if isnum:
+    # Extract keyword from request
+    keyword = request.args.get('keyword', '').strip()
+
+    # Split the keyword into words
+    keywords = keyword.split()
+
+    # Create query body
+    if isnum:  # Numeric search
         body = {
             'query': {
                 'bool': {
-                    'should': [{
-                        'multi_match': {
-                            'query': keyword,
-                            'fields': ['Goals', 'Assists', 'Appearances', 'Yellow cards', 'Red cards'],
-                            'operator': 'or',
+                    'should': [
+                        {
+                            'multi_match': {
+                                'query': keyword,
+                                'fields': ['Goals', 'Assists', 'Appearances', 'Yellow cards', 'Red cards'],
+                                'operator': 'or',
+                            }
                         }
-                    }]
+                    ]
                 }
             }
         }
-        
-    if not isnum:
+
+    if not isnum:  # Textual search
         body = {
             'query': {
                 'bool': {
-                    'should': [{
-                        'query_string': {
-                            'query': f"*{keyword}*",
-                            'fields': ['Name', 'Club', 'Nationality', 'Position']
+                    'should': [
+                        # Fuzzy multi-match
+                        {
+                            'multi_match': {
+                                'query': keyword,
+                                'fields': ['Name', 'Club', 'Nationality', 'Position'],
+                                'fuzziness': 'AUTO',  # Enable fuzziness
+                                'operator': 'or'
+                            }
+                        },
+                        # Exact phrase match (no fuzziness)
+                        {
+                            'match_phrase': {
+                                'Name': keyword
+                            }
+                        },
+                        # Query string with wildcards and fuzziness
+                        {
+                            'query_string': {
+                                'query': ' '.join([f"*{escape(word)}*" for word in keywords]),
+                                'fields': ['Name', 'Club', 'Nationality', 'Position'],
+                                'default_operator': 'or'
+                            }
                         }
-                    }]
-                    # 'query': f"*{keyword}*",
-                    # 'fields': ['Name', 'Club', 'Nationality', 'Position'],
+                    ]
                 }
             }
         }
+
+
 
     #index = index name = premier_league_football_player
     res = es.search(index='premier_league_football_player', body=body)
