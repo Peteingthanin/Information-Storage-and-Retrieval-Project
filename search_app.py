@@ -14,24 +14,17 @@ app = Flask(__name__)
 def index():
     return render_template('index.html')
 
-# Check index name before perform "flask run"
 @app.route('/search')
 def search():
-    page_size = 10
-    keyword = request.args.get('keyword')
-    if request.args.get('page'):
-        page_no = int(request.args.get('page'))
-    else:
-        page_no = 1
+    page_size = 9  
+    keyword = request.args.get('keyword', '').strip()
+    page_no = int(request.args.get('page', 1)) 
     
     try:
         keyword = float(keyword)
         isnum = True
-    except:
+    except ValueError:
         isnum = False
-
-    # Extract keyword from request
-    keyword = request.args.get('keyword', '').strip()
 
     # Split the keyword into words
     keywords = keyword.split()
@@ -46,15 +39,16 @@ def search():
                             'multi_match': {
                                 'query': keyword,
                                 'fields': ['Goals', 'Assists', 'Appearances', 'Yellow cards', 'Red cards'],
-                                'operator': 'or',
+                                'operator': 'or'
                             }
                         }
                     ]
                 }
-            }
+            },
+            'from': (page_no - 1) * page_size, 
+            'size': page_size 
         }
-
-    if not isnum:  # Textual search
+    else:  # Textual search
         body = {
             'query': {
                 'bool': {
@@ -84,20 +78,33 @@ def search():
                         }
                     ]
                 }
-            }
+            },
+            'from': (page_no - 1) * page_size,  
+            'size': page_size  
         }
 
-
-
-    #index = index name = premier_league_football_player
+    # Query Elasticsearch
     res = es.search(index='premier_league_football_player', body=body)
 
-    hits = [{'Name': doc['_source']['Name'],                'Club': doc['_source']['Club'],                 'Nationality': doc['_source']['Nationality'],
-            'Position': doc['_source']['Position'],         'Goals': doc['_source']['Goals'],               'Assists': doc['_source']['Assists'],
-            'Appearances': doc['_source']['Appearances'],   'Yellow cards': doc['_source']['Yellow cards'], 'Red cards': doc['_source']['Red cards'],
-            'Score': doc['_score']
-            }for doc in res['hits']['hits']]
-    
-    page_total = math.ceil(res['hits']['total']['value']/page_size)
-    return render_template('search.html',keyword=keyword, hits=hits, page_no=page_no, page_total=page_total)
+    # Map hits to display fields
+    hits = [{
+        'Name': doc['_source']['Name'],
+        'Club': doc['_source']['Club'],
+        'Nationality': doc['_source']['Nationality'],
+        'Position': doc['_source']['Position'],
+        'Goals': doc['_source']['Goals'],
+        'Assists': doc['_source']['Assists'],
+        'Appearances': doc['_source']['Appearances'],
+        'Yellow cards': doc['_source']['Yellow cards'],
+        'Red cards': doc['_source']['Red cards'],
+        'Image': doc['_source'].get('Image', 'default_image_url_here'), 
+        'Score': doc['_score']
+    } for doc in res['hits']['hits']]
+
+    # Calculate total pages
+    total_hits = res['hits']['total']['value']
+    page_total = math.ceil(total_hits / page_size)
+
+    return render_template('search.html', keyword=keyword, hits=hits, page_no=page_no, page_total=page_total)
+
 
